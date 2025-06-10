@@ -1,0 +1,237 @@
+# Import necessary libraries
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.preprocessing import LabelEncoder
+from sklearn.ensemble import StackingRegressor, RandomForestRegressor, AdaBoostRegressor, GradientBoostingRegressor
+from sklearn.tree import DecisionTreeRegressor
+from sklearn.linear_model import LinearRegression
+from sklearn.neighbors import KNeighborsRegressor
+import xgboost as xgb
+import catboost as cb
+from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
+import optuna
+from optuna import Trial
+import os
+
+# Step 1: Load the dataset
+file_path = '/kaggle/input/final-dataset/Final Dataset with Tempering.xlsx'
+df = pd.read_excel(file_path)
+
+# Step 2: Fill empty cells with zeros
+df.fillna(0, inplace=True)
+
+# Step 3: Show head, data types and description
+print(df.head())
+print(df.dtypes)
+print(df.describe())
+
+# Step 4: Drop columns 'Alloy name'
+df_reduced = df.drop(columns=['Alloy name'])
+
+# Step 5: Ensure all values in the 'Tempering' column are consistent and then apply label encoding
+df_reduced['Tempering'] = df_reduced['Tempering'].astype(str)  # Convert all to string
+
+# Apply LabelEncoder
+encoder = LabelEncoder()
+df_reduced['Tempering'] = encoder.fit_transform(df_reduced['Tempering'])
+
+# Step 6: Draw a Spearman correlation heatmap with Blues
+corr = df_reduced.corr(method='spearman')
+plt.figure(figsize=(12, 8))
+sns.heatmap(corr, annot=True, cmap='Blues', fmt='.2f', linewidths=0.5)
+plt.title('Spearman Correlation Heatmap')
+plt.savefig('/kaggle/working/spearman_correlation_heatmap.png', dpi=500)
+plt.show()
+
+# Step 7: Feature importance comparison using Spearman and Pearson
+spearman_corr = corr['Thermal Conductivity (W/m-K)'].sort_values(ascending=False)
+pearson_corr = df_reduced.corr()['Thermal Conductivity (W/m-K)'].sort_values(ascending=False)
+
+# Plot both correlations
+plt.figure(figsize=(12, 6))
+plt.bar(spearman_corr.index, spearman_corr.values, label='Spearman', alpha=0.6)
+plt.bar(pearson_corr.index, pearson_corr.values, label='Pearson', alpha=0.6)
+plt.xlabel('Features')
+plt.ylabel('Correlation Coefficient')
+plt.title('Comparison of Feature Importance to Target')
+plt.xticks(rotation=90)
+plt.legend()
+plt.savefig('/kaggle/working/correlation_comparison.png', dpi=500)
+plt.show()
+
+# Step 8: Eliminate poorly correlated features (correlation < |0.001|)
+low_corr_features = corr.columns[abs(corr['Thermal Conductivity (W/m-K)']) < 0.001]
+df_reduced = df_reduced.drop(columns=low_corr_features)
+
+# Step 9: Show new dataset with their datatype
+print(df_reduced.dtypes)
+
+# Step 10: Find Spearman and Pearson correlations with the target variable
+spearman_corr = df_reduced.corr(method='spearman')['Thermal Conductivity (W/m-K)']
+pearson_corr = df_reduced.corr()['Thermal Conductivity (W/m-K)']
+
+# Plot correlations
+plt.figure(figsize=(12, 6))
+plt.bar(spearman_corr.index, spearman_corr.values, label='Spearman', alpha=0.6)
+plt.bar(pearson_corr.index, pearson_corr.values, label='Pearson', alpha=0.6)
+plt.xlabel('Features')
+plt.ylabel('Correlation Coefficient')
+plt.title('Feature Correlations with Target Variable')
+plt.xticks(rotation=90)
+plt.legend()
+plt.savefig('/kaggle/working/feature_correlation_target.png', dpi=500)
+plt.show()
+
+# Save Spearman and Pearson values to CSV
+corr_df = pd.DataFrame({'Spearman': spearman_corr, 'Pearson': pearson_corr})
+corr_df.to_csv('/kaggle/working/feature_correlations.csv', index=True)
+
+# Step 11: Split the data into training and testing sets
+X = df_reduced.drop(columns=['Thermal Conductivity (W/m-K)'])
+y = df_reduced['Thermal Conductivity (W/m-K)']
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Step 12: Define all models
+models = {
+    'XGBoost': xgb.XGBRegressor(),
+    'CatBoost': cb.CatBoostRegressor(verbose=0),
+    'Gradient Boosting': GradientBoostingRegressor(),
+    'Stacking Ensemble': StackingRegressor(estimators=[
+        ('rf', RandomForestRegressor()),
+        ('dt', DecisionTreeRegressor())
+    ], final_estimator=LinearRegression()),
+    'Decision Tree': DecisionTreeRegressor(),
+    'Random Forest': RandomForestRegressor(),
+    'AdaBoost': AdaBoostRegressor(),
+    'K-Nearest Neighbor': KNeighborsRegressor(),
+    'Linear Regression': LinearRegression(),
+}
+
+# Step 13: Hyperparameter tuning with Optuna for all models
+def objective(trial: Trial, model_name: str):
+    if model_name == 'XGBoost':
+        param = {
+            'n_estimators': trial.suggest_int('n_estimators', 50, 300),
+            'max_depth': trial.suggest_int('max_depth', 3, 12),
+            'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.3),
+        }
+        model = xgb.XGBRegressor(**param)
+    elif model_name == 'CatBoost':
+        param = {
+            'iterations': trial.suggest_int('iterations', 100, 1000),
+            'depth': trial.suggest_int('depth', 3, 10),
+            'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.2),
+        }
+        model = cb.CatBoostRegressor(**param, verbose=0)
+    elif model_name == 'Gradient Boosting':
+        param = {
+            'n_estimators': trial.suggest_int('n_estimators', 50, 300),
+            'max_depth': trial.suggest_int('max_depth', 3, 12),
+            'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.3),
+        }
+        model = GradientBoostingRegressor(**param)
+    elif model_name == 'Stacking Ensemble':
+        param = {}  # Stacking model does not have specific parameters
+        model = StackingRegressor(estimators=[
+            ('rf', RandomForestRegressor()),
+            ('dt', DecisionTreeRegressor())
+        ], final_estimator=LinearRegression())
+    elif model_name == 'Decision Tree':
+        param = {
+            'max_depth': trial.suggest_int('max_depth', 3, 15),
+        }
+        model = DecisionTreeRegressor(**param)
+    elif model_name == 'Random Forest':
+        param = {
+            'n_estimators': trial.suggest_int('n_estimators', 50, 300),
+            'max_depth': trial.suggest_int('max_depth', 3, 15),
+        }
+        model = RandomForestRegressor(**param)
+    elif model_name == 'AdaBoost':
+        param = {
+            'n_estimators': trial.suggest_int('n_estimators', 50, 300),
+            'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.2),
+        }
+        model = AdaBoostRegressor(**param)
+    elif model_name == 'K-Nearest Neighbor':
+        param = {
+            'n_neighbors': trial.suggest_int('n_neighbors', 3, 20),
+        }
+        model = KNeighborsRegressor(**param)
+    elif model_name == 'Linear Regression':
+        param = {}  # Linear Regression doesn't need tuning
+        model = LinearRegression()
+
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+    rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+    return rmse
+
+# Perform hyperparameter tuning for all models
+best_params = {}
+for model_name in models.keys():
+    study = optuna.create_study(direction='minimize')
+    study.optimize(lambda trial: objective(trial, model_name), n_trials=50)
+    best_params[model_name] = study.best_params
+    print(f"Best params for {model_name}: {best_params[model_name]}")
+
+# Save the best hyperparameters
+pd.DataFrame(best_params).to_csv('/kaggle/working/best_hyperparameters.csv', index=False)
+
+# Step 14: Train models with best hyperparameters
+best_models = {}
+for model_name, model in models.items():
+    model.set_params(**best_params[model_name])  # Set the best hyperparameters
+    model.fit(X_train, y_train)
+    best_models[model_name] = model
+
+# Step 15: Evaluate models
+eval_results = []
+for model_name, model in best_models.items():
+    y_pred = model.predict(X_test)
+    r2 = r2_score(y_test, y_pred)
+    rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+    mae = mean_absolute_error(y_test, y_pred)
+    eval_results.append([model_name, r2, rmse, mae])
+
+eval_results_df = pd.DataFrame(eval_results, columns=['Model', 'R²', 'RMSE', 'MAE'])
+eval_results_df.to_csv('/kaggle/working/model_evaluations.csv', index=False)
+
+# Step 16: Performance scatter plot (Predicted vs Actual for each model)
+for model_name, model in best_models.items():
+    y_pred = model.predict(X_test)
+    
+    # Calculate evaluation metrics
+    r2 = r2_score(y_test, y_pred)
+    rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+    mae = mean_absolute_error(y_test, y_pred)
+    
+    # Create the plot
+    plt.figure(figsize=(8, 6))
+    
+    # Plot actual values in red
+    plt.scatter(y_test, y_test, color='red', label='Actual', alpha=0.6)
+    
+    # Plot predicted values in blue
+    plt.scatter(y_test, y_pred, color='blue', label='Predicted', alpha=0.6)
+    
+    # Plot the diagonal line (perfect prediction)
+    plt.plot([min(y_test), max(y_test)], [min(y_test), max(y_test)], color='black', linestyle='--')
+    
+    # Add labels and title
+    plt.xlabel('Actual')
+    plt.ylabel('Predicted')
+    plt.title(f'Predicted vs Actual - {model_name}')
+    
+    # Display R², RMSE, and MAE values on the plot
+    plt.text(0.05, 0.95, f'R²: {r2:.2f}\nRMSE: {rmse:.2f}\nMAE: {mae:.2f}',
+             transform=plt.gca().transAxes, fontsize=12, verticalalignment='top', color='black')
+    
+    
+    # Save the plot
+    plt.savefig(f'/kaggle/working/predicted_vs_actual_{model_name}.png', dpi=500)
+    plt.show()
+
