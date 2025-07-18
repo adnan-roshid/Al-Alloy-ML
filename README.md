@@ -5,6 +5,7 @@ A data and code repository for a ML based research
 Title: Analysis of Thermal Conductivity of Aluminum Alloys by Compositions and Tempering Process using Machine Learning
 
 All Authors: Adnan Roshid Shawon; Rittika Ghosh; Md Ashraful Islam
+Affiliation: Department of Mechanical Engineering, Khulna University of Engineering & Technology, Khulna, Bangladesh.
 
 Initially we used Kaggle.com platform but now We coppied the notebook here. 
 
