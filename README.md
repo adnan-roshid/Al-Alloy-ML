@@ -10,6 +10,8 @@ Affiliation: Department of Mechanical Engineering, Khulna University of Engineer
 
 Initially we used Kaggle.com platform but now We coppied the notebook here. 
 
+Please Cite This Article as “A. R. Shawon, R. Ghosh, and A. Islam, “Analysis of thermal conductivity of aluminum alloys by compositions and tempering process using machine learning”, doi: 10.1038/s41598-025-15868-y.” 
+
 # INDEX
 1. Dataset from MATWEB.xlsx
    
