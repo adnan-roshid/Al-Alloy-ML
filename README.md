@@ -8,6 +8,9 @@ All Authors: Adnan Roshid Shawon; Rittika Ghosh; Md Ashraful Islam
 
 Affiliation: Department of Mechanical Engineering, Khulna University of Engineering & Technology, Khulna, Bangladesh.
 
+Cite this article
+Shawon, A.R., Ghosh, R. & Islam, M.A. Analysis of thermal conductivity of aluminum alloys by compositions and tempering process using machine learning. Sci Rep 15, 33352 (2025). https://doi.org/10.1038/s41598-025-15868-y
+
 Initially we used Kaggle.com platform but now We coppied the notebook here. 
 
 Please Cite This Article as “A. R. Shawon, R. Ghosh, and A. Islam, “Analysis of thermal conductivity of aluminum alloys by compositions and tempering process using machine learning”, doi: 10.1038/s41598-025-15868-y.” 
